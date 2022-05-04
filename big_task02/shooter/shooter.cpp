@@ -19,10 +19,10 @@ GLFWwindow* window;
 using namespace glm;
 
 #include <vector>
-#include <cstdlib>
 #include <iostream>
 
 #include <common/shader.hpp>
+#include <common/texture.hpp>
 
 std::vector<GLfloat> sphere_to_cartesian(GLfloat phi, GLfloat psi, GLfloat radius) {
   phi = phi * glm::pi<GLfloat>() / 180;
@@ -72,18 +72,18 @@ void computeMatricesFromInputs(){
 
   // Compute time difference between current and last frame
   double currentTime = glfwGetTime();
-  float deltaTime = float(currentTime - lastTime);
+  auto deltaTime = float(currentTime - lastTime);
 
   // Get mouse position
   double xpos, ypos;
   glfwGetCursorPos(window, &xpos, &ypos);
 
   // Reset mouse position for next frame
-  glfwSetCursorPos(window, 1024/2, 768/2);
+  glfwSetCursorPos(window, 1024.f/2, 768.f/2);
 
   // Compute new orientation
-  horizontalAngle += mouseSpeed * float(1024/2 - xpos );
-  verticalAngle   += mouseSpeed * float( 768/2 - ypos );
+  horizontalAngle += mouseSpeed * float(1024.f/2 - xpos );
+  verticalAngle   += mouseSpeed * float( 768.f/2 - ypos );
 
   // Direction : Spherical coordinates to Cartesian coordinates conversion
   direction = glm::vec3(
@@ -135,6 +135,7 @@ void computeMatricesFromInputs(){
 }
 
 struct Enemy {
+  static const GLfloat colliderRadius;
   glm::vec3 position;
   GLfloat angle;
   glm::vec3 rotationAxis;
@@ -144,6 +145,8 @@ struct Enemy {
     const glm::vec3& rotationAxis) :
       position(position), angle(angle), rotationAxis(rotationAxis) {}
 };
+
+const GLfloat Enemy::colliderRadius = 0.6f;
 
 Enemy getRandomEnemy() {
   glm::vec3 position = {
@@ -164,7 +167,32 @@ Enemy getRandomEnemy() {
       y,
       z
   };
-  return Enemy(position, angle, rotationAxis);
+  return {position, angle, rotationAxis};
+}
+
+struct Ball {
+  static const GLfloat colliderRadius;
+  static const GLfloat speed;
+  glm::vec3 position_;
+  glm::vec3 direction_;
+  Ball(): position_(position + direction * (colliderRadius * 2.f)), direction_(direction) {}
+};
+
+const GLfloat Ball::colliderRadius = 0.5f;
+const GLfloat Ball::speed = 0.01f;
+
+bool deleteCollided(std::vector<Ball>::iterator& ball_it, std::vector<Ball>& balls, std::vector<Enemy>& enemies) {
+  for (auto enemy_it = enemies.begin(); enemy_it != enemies.end(); ++enemy_it) {
+    auto dists = ball_it->position_ - enemy_it->position;
+    for (int i = 0; i < 3; ++i) {
+      if (glm::abs(dists[i]) <= Enemy::colliderRadius + Ball::colliderRadius) {
+        balls.erase(ball_it);
+        enemies.erase(enemy_it);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 
@@ -219,18 +247,20 @@ int main( void )
   glBindVertexArray(VertexArrayID);
 
   // Create and compile our GLSL program from the shaders
-  GLuint programID = LoadShaders( "TransformVertexShader.vertexshader", "ColorFragmentShader.fragmentshader" );
+  GLuint enemyProgramID = LoadShaders( "TransformVertexShader.vertexshader", "ColorFragmentShader.fragmentshader");
 
+  GLuint ballProgramID = LoadShaders("TransformVertexShader2.vertexshader", "TextureFragmentShader.fragmentshader");
   // Get a handle for our "MVP" uniform
-  GLuint MatrixID = glGetUniformLocation(programID, "MVP");
+  GLuint enemyMatrixID = glGetUniformLocation(enemyProgramID, "MVP");
+  GLuint ballMatrixID = glGetUniformLocation(ballProgramID, "MVP");
 
   // Projection matrix : 45� Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
   glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
   // Camera matrix
   glm::mat4 View       = glm::lookAt(
       glm::vec3(10,10,10),
-      glm::vec3(0,-1,-0),
-      glm::vec3(0,0,0)
+      glm::vec3(0,0,-0),
+      glm::vec3(0,-1,0)
   );
   // Model matrix : an identity matrix (model will be at the origin)
   glm::mat4 Model      = glm::mat4(1.0f);
@@ -428,32 +458,38 @@ int main( void )
       0.4f,  0.0f,  0.9f,
   };
 
+  // Load the texture using any two methods
+  //GLuint Texture = loadBMP_custom("uvtemplate.bmp");
+  GLuint Texture = loadDDS("fireball.DDS");
+  // Get a handle for our "myTextureSampler" uniform
+  GLuint TextureID = glGetUniformLocation(enemyProgramID, "myTextureSampler");
+
   const int PHI_STEPS = 20;
   const int PSI_STEPS = 20;
-  const GLfloat RADIUS = 1;
+  const GLfloat RADIUS = Ball::colliderRadius;
 
-  GLfloat phi_step = 360 / PHI_STEPS;
-  GLfloat psi_step = 180 / PSI_STEPS;
+  GLfloat phi_step = 360.f / PHI_STEPS;
+  GLfloat psi_step = 180.f / PSI_STEPS;
 
-  GLfloat verticies[PHI_STEPS * PSI_STEPS * 3 * 3 * 2];
+  GLfloat ballvertexdata[PHI_STEPS * PSI_STEPS * 3 * 3 * 2];
   int current_index = 0;
-  for (int cur_psi_step = 0; cur_psi_step < PHI_STEPS; ++cur_psi_step) {
+  for (int cur_psi_step = 0; cur_psi_step < PSI_STEPS; ++cur_psi_step) {
     GLfloat psi = cur_psi_step * psi_step;
-    for (int cur_phi_step = 0; cur_phi_step < PSI_STEPS; ++cur_phi_step) {
+    for (int cur_phi_step = 0; cur_phi_step < PHI_STEPS; ++cur_phi_step) {
       GLfloat phi = cur_phi_step * phi_step;
       auto first_vertex = sphere_to_cartesian(phi, psi, RADIUS);
       auto second_vertex = sphere_to_cartesian(phi + phi_step, psi, RADIUS);
       auto third_vertex = sphere_to_cartesian(phi, psi + psi_step, RADIUS);
-      insert_into_vertices(verticies, current_index, first_vertex);
-      insert_into_vertices(verticies, current_index, second_vertex);
-      insert_into_vertices(verticies, current_index, third_vertex);
+      insert_into_vertices(ballvertexdata, current_index, first_vertex);
+      insert_into_vertices(ballvertexdata, current_index, second_vertex);
+      insert_into_vertices(ballvertexdata, current_index, third_vertex);
 
       first_vertex = sphere_to_cartesian(phi + phi_step, psi, RADIUS);
       second_vertex = sphere_to_cartesian(phi + phi_step, psi + psi_step, RADIUS);
       third_vertex = sphere_to_cartesian(phi, psi + psi_step, RADIUS);
-      insert_into_vertices(verticies, current_index, first_vertex);
-      insert_into_vertices(verticies, current_index, second_vertex);
-      insert_into_vertices(verticies, current_index, third_vertex);
+      insert_into_vertices(ballvertexdata, current_index, first_vertex);
+      insert_into_vertices(ballvertexdata, current_index, second_vertex);
+      insert_into_vertices(ballvertexdata, current_index, third_vertex);
     }
   }
 
@@ -465,12 +501,41 @@ int main( void )
     colors[i * 3 + 2] = 0.9f;
   }
 
+  GLfloat g_uv_buffer_data[PHI_STEPS * PSI_STEPS * 3 * 2 * 2];
+  for (int i = 0; i < PHI_STEPS * PSI_STEPS; ++i) {
+    int height_idx = i / PHI_STEPS;
+    int width_idx = i % PSI_STEPS;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 0] = 0.0f + height_idx;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 1] = 0.0f + width_idx;
+
+    g_uv_buffer_data[i * 3 * 2 * 2 + 2] = 0.0f + height_idx;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 3] = 0.1f + width_idx;
+
+    g_uv_buffer_data[i * 3 * 2 * 2 + 4] = 1.0f + height_idx;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 5] = 1.0f + width_idx;
+
+
+    g_uv_buffer_data[i * 3 * 2 * 2 + 6] = 0.0f + height_idx;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 7] = 0.0f + width_idx;
+
+    g_uv_buffer_data[i * 3 * 2 * 2 + 8] = 1.0f + height_idx;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 9] = 0.0f + width_idx;
+
+    g_uv_buffer_data[i * 3 * 2 * 2 + 10] = 1.0f + height_idx;
+    g_uv_buffer_data[i * 3 * 2 * 2 + 11] = 1.0f + width_idx;
+  }
+
+  GLuint uvbuffer;
+  glGenBuffers(1, &uvbuffer);
+  glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
+
   GLuint vertexbuffers[2];
   glGenBuffers(2, vertexbuffers);
   glBindBuffer(GL_ARRAY_BUFFER, vertexbuffers[0]);
   glBufferData(GL_ARRAY_BUFFER, sizeof(enemy_buffer_data), enemy_buffer_data, GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, vertexbuffers[1]);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(verticies), verticies, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(ballvertexdata), ballvertexdata, GL_STATIC_DRAW);
 
   GLuint colorbuffers[2];
   glGenBuffers(2, colorbuffers);
@@ -483,31 +548,27 @@ int main( void )
   GLfloat CREATE_ENEMY_INTERVAL = 3.0f;
   GLfloat time = glfwGetTime();
 
+  std::vector<Ball> balls;
+
+
   do{
     GLfloat currentTime = glfwGetTime();
     if (currentTime - time >= CREATE_ENEMY_INTERVAL) {
       time = currentTime;
       enemies.push_back(getRandomEnemy());
     }
+    if (glfwGetKey( window, GLFW_KEY_SPACE ) == GLFW_PRESS) {
+      balls.emplace_back();
+    }
     // Clear the screen
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Use our shader
-    glUseProgram(programID);
+    glUseProgram(enemyProgramID);
 
     // 1rst attribute buffer : vertices
     glEnableVertexAttribArray(0);
-//    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffers[0]);
-//    glVertexAttribPointer(
-//        0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
-//        3,                  // size
-//        GL_FLOAT,           // type
-//        GL_FALSE,           // normalized?
-//        0,                  // stride
-//        (void*)0            // array buffer offset
-//    );
-
-    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffers[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffers[0]);
     glVertexAttribPointer(
         0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
         3,                  // size
@@ -519,16 +580,7 @@ int main( void )
 
     // 2nd attribute buffer : colors
     glEnableVertexAttribArray(1);
-//    glBindBuffer(GL_ARRAY_BUFFER, colorbuffers[0]);
-//    glVertexAttribPointer(
-//        1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-//        3,                                // size
-//        GL_FLOAT,                         // type
-//        GL_FALSE,                         // normalized?
-//        0,                                // stride
-//        (void*)0                          // array buffer offset
-//    );
-    glBindBuffer(GL_ARRAY_BUFFER, colorbuffers[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, colorbuffers[0]);
     glVertexAttribPointer(
         1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
         3,                                // size
@@ -537,53 +589,73 @@ int main( void )
         0,                                // stride
         (void*)0                          // array buffer offset
     );
-//    for (int i = 0; i < 3; ++i) {
-//      std::cout << direction[i] << " ";
-//    }
-//    std::cout << std::endl;
 
-//    MVP = Projection * View * Model;
-//    glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-//    glDrawArrays(GL_TRIANGLES, 0, 24*3);
     computeMatricesFromInputs();
     Projection = getProjectionMatrix();
     View = getViewMatrix();
-//    Model = glm::mat4(1.f);
-//    MVP = Projection * View * Model;
-//    glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-
-//    for (const auto& enemy : enemies)
-    for (int j = 0; j < enemies.size(); ++j)
+    for (const auto& enemy : enemies)
     {
-      // Calculate the model matrix for each object and pass it to shader before drawing
-//      if (j == 1) {
-//        enemies[j].position += 0.001f * direction;
-//      }
-//      auto enemy = enemies[j];
-//      glm::mat4 model;
-//      model = glm::translate(model, enemy.position);
-//      Model = glm::rotate(model, enemy.angle, enemy.rotationAxis);
-//      // Send our transformation to the currently bound shader,
-//      // in the "MVP" uniform
-//
-//      MVP = Projection * View * Model;
-//      glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-//      glDrawArrays(GL_TRIANGLES, 0, 24*3);
-    }
+      Model = glm::translate(glm::mat4(), enemy.position);
+      Model = glm::rotate(Model, enemy.angle, enemy.rotationAxis);
+      // Send our transformation to the currently bound shader,
+      // in the "MVP" uniform
 
-//
-//    glDrawArrays(GL_TRIANGLES, 0, 24*3); // 24*3 indices starting at 0 -> 24 triangles
       MVP = Projection * View * Model;
-      View[0];
-      glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-    glDrawArrays(GL_TRIANGLES, 0, PHI_STEPS * PSI_STEPS * 3 * 3 * 2);
+      glUniformMatrix4fv(enemyMatrixID, 1, GL_FALSE, &MVP[0][0]);
+      glDrawArrays(GL_TRIANGLES, 0, 24*3);
+    }
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+
+    // Use our shader
+    glUseProgram(ballProgramID);
+
+    // Bind our texture in Texture Unit 0
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, Texture);
+    // Set our "myTextureSampler" sampler to use Texture Unit 0
+    glUniform1i(TextureID, 0);
+
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffers[1]);
+    glVertexAttribPointer(
+        0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
+        3,                  // size
+        GL_FLOAT,           // type
+        GL_FALSE,           // normalized?
+        0,                  // stride
+        (void*)0            // array buffer offset
+    );
+
+    // 2nd attribute buffer : UVs
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+    glVertexAttribPointer(
+        1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+        2,                                // size : U+V => 2
+        GL_FLOAT,                         // type
+        GL_FALSE,                         // normalized?
+        0,                                // stride
+        (void*)0                          // array buffer offset
+    );
+    //std::cout << balls.size() << '\n';
+
+    for (auto ball_it = balls.begin(); ball_it != balls.end(); ++ball_it) {
+//      ball.position_ += direction * Ball::speed;
+      ball_it->position_ += ball_it->direction_ * Ball::speed;
+      if (!deleteCollided(ball_it, balls, enemies)) {
+        Model = glm::translate(glm::mat4(), ball_it->position_);
+        MVP = Projection * View * Model;
+        glUniformMatrix4fv(ballMatrixID, 1, GL_FALSE, &MVP[0][0]);
+        glDrawArrays(GL_TRIANGLES, 0, PHI_STEPS * PSI_STEPS * 3 * 3 * 2);
+      }
+    }
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
 
     // Swap buffers
     glfwSwapBuffers(window);
     glfwPollEvents();
-
   } // Check if the ESC key was pressed or the window was closed
   while( glfwGetKey(window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
          glfwWindowShouldClose(window) == 0 );
@@ -591,8 +663,10 @@ int main( void )
   // Cleanup VBO and shader
   glDeleteBuffers(2, vertexbuffers);
   glDeleteBuffers(2, colorbuffers);
-  glDeleteProgram(programID);
+  glDeleteProgram(enemyProgramID);
+  glDeleteProgram(ballProgramID);
   glDeleteVertexArrays(1, &VertexArrayID);
+  glDeleteTextures(1, &Texture);
 
   // Close OpenGL window and terminate GLFW
   glfwTerminate();
