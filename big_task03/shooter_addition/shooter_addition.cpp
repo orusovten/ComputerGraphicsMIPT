@@ -271,7 +271,8 @@ void generateSphere(GLfloat* array, GLfloat radius, int phi_steps, int psi_steps
 
 void changeBallDetalizationLevel(GLuint* vertexBuffers, int& PHI_STEPS, int& PSI_STEPS) {
   static int add = 0;
-  if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS) {
+  if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS &&
+      (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)) {
     add = 1;
   } else if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS) {
     add = -1;
