@@ -23,6 +23,8 @@ using namespace glm;
 
 #include <common/shader.hpp>
 #include <common/texture.hpp>
+#include <common/controls.hpp>
+#include <common/objloader.hpp>
 
 std::vector<GLfloat> sphereToCartesian(GLfloat phi, GLfloat psi, GLfloat radius) {
     phi = phi * glm::pi<GLfloat>() / 180;
@@ -299,17 +301,42 @@ int main(void)
     // Accept fragment if it closer to the camera than the former one
     glDepthFunc(GL_LESS);
 
+    // Cull triangles which normal is not towards the camera
+    glEnable(GL_CULL_FACE);
+
     GLuint VertexArrayID;
     glGenVertexArrays(1, &VertexArrayID);
     glBindVertexArray(VertexArrayID);
 
     // Create and compile our GLSL program from the shaders
-    GLuint enemyProgramID = LoadShaders("TransformVertexShader.vertexshader", "ColorFragmentShader.fragmentshader");
+    GLuint enemyProgramID = LoadShaders("TransformVertexShader2.vertexshader", "TextureFragmentShader.fragmentshader");
 
     GLuint ballProgramID = LoadShaders("TransformVertexShader2.vertexshader", "TextureFragmentShader.fragmentshader");
     // Get a handle for our "MVP" uniform
     GLuint enemyMatrixID = glGetUniformLocation(enemyProgramID, "MVP");
     GLuint ballMatrixID = glGetUniformLocation(ballProgramID, "MVP");
+
+    // Load textures
+    GLuint FireballTexture = loadDDS("fireball_texture.DDS");
+    GLuint RockTexture = loadDDS("rock_texture.DDS");
+
+    // Get a handle for our "myTextureSampler" uniform
+    GLuint EnemyTextureID = glGetUniformLocation(enemyProgramID, "myTextureSampler");
+    GLuint BallTextureID = glGetUniformLocation(ballProgramID, "myTextureSampler");
+
+    // Read sphere .obj file
+    std::vector<glm::vec3> ball_vertices;
+    std::vector<glm::vec2> ball_uvs;
+    std::vector<glm::vec3> ball_normals;
+    bool res = loadOBJ("fireball_model.obj", ball_vertices, ball_uvs, ball_normals);
+    assert(res);
+
+    // Read rock .obj file
+    std::vector<glm::vec3> rock_vertices;
+    std::vector<glm::vec2> rock_uvs;
+    std::vector<glm::vec3> rock_normals;
+    res = loadOBJ("rock_model.obj", rock_vertices, rock_uvs, rock_normals);
+    assert(res);
 
     // Projection matrix : 45� Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
     glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
@@ -324,226 +351,19 @@ int main(void)
     // Our ModelViewProjection : multiplication of our 3 matrices
     glm::mat4 MVP = Projection * View * Model; // Remember, matrix multiplication is the other way around
 
-    // Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
-    // A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
-    /*static const GLfloat enemy_buffer_data[] = {
-        -0.4f,-0.4f,-0.4f,      -0.4f,-0.4f, 0.4f,      -1.0f, -0.0f, 0.0f,
-        -0.4f,-0.4f, 0.4f,      -0.4f, 0.4f, 0.4f,      -1.0f, -0.0f, 0.0f,
-        -0.4f, 0.4f, 0.4f,      -0.4f, 0.4f, -0.4f,     -1.0f, -0.0f, 0.0f,
-        -0.4f, 0.4f, -0.4f,     -0.4f, -0.4f, -0.4f,    -1.0f, -0.0f, 0.0f,
-        -0.4f, 0.4f, 0.4f,      0.4f, 0.4f, 0.4f,       0.0f, 1.0f, 0.0f,
-        0.4f, 0.4f, 0.4f,       0.4f, 0.4f, -0.4f,      0.0f, 1.0f, 0.0f,
-        0.4f, 0.4f, -0.4f       -0.4f, 0.4f, -0.4f,     0.0f, 1.0f, 0.0f,
-        -0.4f, 0.4f, -0.4f,     -0.4f, 0.4f, 0.4f,      0.0f, 1.0f, 0.0f,
-        -0.4f, 0.4f, 0.4f,      0.4f, 0.4f, 0.4f,       0.0f, 0.0f, 1.0f,
-        0.4f, 0.4f, 0.4f,       0.4f, -0.4f, 0.4f,      0.0f, 0.0f, 1.0f,
-        0.4f, -0.4f, 0.4f,      -0.4f, -0.4f, 0.4f,     0.0f, 0.0f, 1.0f,
-        -0.4f, -0.4f, 0.4f,     -0.4f, 0.4f, 0.4f,      0.0f, 0.0f, 1.0f,
-        0.4f, 0.4f, 0.4f,       0.4f, -0.4f, 0.4f,      1.0f, 0.0f, 0.0f,
-        0.4f, -0.4f, 0.4f,      0.4f, -0.4f, -0.4f,     1.0f, 0.0f, 0.0f,
-        0.4f, -0.4f, -0.4f,     0.4f, 0.4f, -0.4f,      1.0f, 0.0f, 0.0f,
-        0.4f, 0.4f, -0.4f,      0.4f, 0.4f, 0.4f,       1.0f, 0.0f, 0.0f,
-        0.4f, 0.4f, -0.4f,      0.4f, -0.4f, -0.4f,     0.0f, 0.0f, -1.0f,
-        0.4f, -0.4f, -0.4f,     -0.4f, -0.4f, -0.4f,    0.0f, 0.0f, -1.0f,
-        -0.4f, -0.4f, -0.4f,    -0.4f, 0.4f, -0.4f,     0.0f, 0.0f, -1.0f,
-        -0.4f, 0.4f, -0.4f,     0.4f, 0.4f, -0.4f,      0.0f, 0.0f, -1.0f,
-        0.4f, -0.4f, -0.4f,     -0.4f, -0.4f, -0.4f,    0.0f, -1.0f, 0.0f,
-        -0.4f, -0.4f, -0.4f,    -0.4f, -0.4f, 0.4f,     0.0f, -1.0f, 0.0f,
-        -0.4f, -0.4f, 0.4f,     0.4f, -0.4f, 0.4f,      0.0f, -1.0f, 0.0f,
-        0.4f, -0.4f, 0.4f,      0.4f, -0.4f, -0.4f,     0.0f, -1.0f, 0.0f,
-    };*/
-    static const GLfloat enemy_buffer_data[] = {
-            -0.4f,-0.4f,-0.4f,
-            -0.4f,-0.4f, 0.4f,
-            -1.0f, -0.0f, 0.0f,
-
-            -0.4f,-0.4f, 0.4f,
-            -0.4f, 0.4f, 0.4f,
-            -1.0f, -0.0f, 0.0f,
-
-            -0.4f, 0.4f, 0.4f,
-            -0.4f, 0.4f, -0.4f,
-            -1.0f, -0.0f, 0.0f,
-
-            -0.4f, 0.4f, -0.4f,
-            -0.4f, -0.4f, -0.4f,
-            -1.0f, -0.0f, 0.0f,
-
-
-            -0.4f, 0.4f, 0.4f,
-            0.4f, 0.4f, 0.4f,
-            0.0f, 1.0f, 0.0f,
-
-            0.4f, 0.4f, 0.4f,
-            0.4f, 0.4f, -0.4f,
-            0.0f, 1.0f, 0.0f,
-
-            0.4f, 0.4f, -0.4f,
-            -0.4f, 0.4f, -0.4f,
-            0.0f, 1.0f, 0.0f,
-
-            -0.4f, 0.4f, -0.4f,
-            -0.4f, 0.4f, 0.4f,
-            0.0f, 1.0f, 0.0f,
-
-
-            -0.4f, 0.4f, 0.4f,
-            0.4f, 0.4f, 0.4f,
-            0.0f, 0.0f, 1.0f,
-
-            0.4f, 0.4f, 0.4f,
-            0.4f, -0.4f, 0.4f,
-            0.0f, 0.0f, 1.0f,
-
-            0.4f, -0.4f, 0.4f,
-            -0.4f, -0.4f, 0.4f,
-            0.0f, 0.0f, 1.0f,
-
-            -0.4f, -0.4f, 0.4f,
-            -0.4f, 0.4f, 0.4f,
-            0.0f, 0.0f, 1.0f,
-
-
-            0.4f, 0.4f, 0.4f,
-            0.4f, -0.4f, 0.4f,
-            1.0f, 0.0f, 0.0f,
-
-            0.4f, -0.4f, 0.4f,
-            0.4f, -0.4f, -0.4f,
-            1.0f, 0.0f, 0.0f,
-
-            0.4f, -0.4f, -0.4f,
-            0.4f, 0.4f, -0.4f,
-            1.0f, 0.0f, 0.0f,
-
-            0.4f, 0.4f, -0.4f,
-            0.4f, 0.4f, 0.4f,
-            1.0f, 0.0f, 0.0f,
-
-
-            0.4f, 0.4f, -0.4f,
-            0.4f, -0.4f, -0.4f,
-            0.0f, 0.0f, -1.0f,
-
-            0.4f, -0.4f, -0.4f,
-            -0.4f, -0.4f, -0.4f,
-            0.0f, 0.0f, -1.0f,
-
-            -0.4f, -0.4f, -0.4f,
-            -0.4f, 0.4f, -0.4f,
-            0.0f, 0.0f, -1.0f,
-
-            -0.4f, 0.4f, -0.4f,
-            0.4f, 0.4f, -0.4f,
-            0.0f, 0.0f, -1.0f,
-
-
-            0.4f, -0.4f, -0.4f,
-            -0.4f, -0.4f, -0.4f,
-            0.0f, -1.0f, 0.0f,
-
-            -0.4f, -0.4f, -0.4f,
-            -0.4f, -0.4f, 0.4f,
-            0.0f, -1.0f, 0.0f,
-
-            -0.4f, -0.4f, 0.4f,
-            0.4f, -0.4f, 0.4f,
-            0.0f, -1.0f, 0.0f,
-
-            0.4f, -0.4f, 0.4f,
-            0.4f, -0.4f, -0.4f,
-            0.0f, -1.0f, 0.0f,
-    };
-
-    // One color for each vertex. They were generated randomly.
-    static const GLfloat enemy_color_buffer_data[] = {
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-
-            0.822f,     0.569f,     0.201f,     0.435f,     0.602f,     0.223f,     0.4f,       0.0f,       0.9f,
-    };
-
-    const int PHI_STEPS = 20;
-    const int PSI_STEPS = 20;
-    const GLfloat RADIUS = Ball::colliderRadius;
-
-    GLfloat phi_step = 360.f / PHI_STEPS;
-    GLfloat psi_step = 180.f / PSI_STEPS;
-
-    GLfloat ballVertexData[PHI_STEPS * PSI_STEPS * 3 * 3 * 2];
-    generateSphere(ballVertexData, RADIUS, PHI_STEPS, PSI_STEPS);
-
-    GLuint Texture = loadDDS("fireball.DDS");
-    // Get a handle for our "myTextureSampler" uniform
-    GLuint TextureID = glGetUniformLocation(enemyProgramID, "myTextureSampler");
-
-    // Generate UV-coordinates for ball
-    GLfloat g_uv_buffer_data[PHI_STEPS * PSI_STEPS * 3 * 2 * 2];
-    for (int i = 0; i < PHI_STEPS * PSI_STEPS; ++i) {
-        g_uv_buffer_data[i * 3 * 2 * 2 + 0] = 0.0f;
-        g_uv_buffer_data[i * 3 * 2 * 2 + 1] = 0.0f;
-
-        g_uv_buffer_data[i * 3 * 2 * 2 + 2] = 0.0f;
-        g_uv_buffer_data[i * 3 * 2 * 2 + 3] = 0.1f;
-
-        g_uv_buffer_data[i * 3 * 2 * 2 + 4] = 1.0f;
-        g_uv_buffer_data[i * 3 * 2 * 2 + 5] = 1.0f;
-
-
-        g_uv_buffer_data[i * 3 * 2 * 2 + 6] = 0.0f;
-        g_uv_buffer_data[i * 3 * 2 * 2 + 7] = 0.0f;
-
-        g_uv_buffer_data[i * 3 * 2 * 2 + 8] = 1.0f;
-        g_uv_buffer_data[i * 3 * 2 * 2 + 9] = 0.0f;
-
-        g_uv_buffer_data[i * 3 * 2 * 2 + 10] = 1.0f;
-        g_uv_buffer_data[i * 3 * 2 * 2 + 11] = 1.0f;
-    }
-
-    GLuint uvBuffer;
-    glGenBuffers(1, &uvBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
-
     GLuint vertexBuffers[2];
     glGenBuffers(2, vertexBuffers);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[0]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(enemy_buffer_data), enemy_buffer_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, rock_vertices.size() * sizeof(glm::vec3), &rock_vertices[0], GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(ballVertexData), ballVertexData, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, ball_vertices.size() * sizeof(glm::vec3), &ball_vertices[0], GL_STATIC_DRAW);
 
-    GLuint colorBuffer;
-    glGenBuffers(1, &colorBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(enemy_color_buffer_data), enemy_color_buffer_data, GL_STATIC_DRAW);
+    GLuint uvBuffers[2];
+    glGenBuffers(2, uvBuffers);
+    glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[0]);
+    glBufferData(GL_ARRAY_BUFFER, rock_uvs.size() * sizeof(glm::vec2), &rock_uvs[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[1]);
+    glBufferData(GL_ARRAY_BUFFER, ball_uvs.size() * sizeof(glm::vec2), &ball_uvs[0], GL_STATIC_DRAW);
 
     std::vector<Enemy> enemies;
     std::vector<Ball> balls;
@@ -557,7 +377,12 @@ int main(void)
         // Use our shader
         glUseProgram(enemyProgramID);
 
-        // 1rst attribute buffer : vertices
+        // Bind our texture in Texture Unit 0
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, RockTexture);
+        // Set our "myTextureSampler" sampler to use Texture Unit 0
+        glUniform1i(EnemyTextureID, 0);
+
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[0]);
         glVertexAttribPointer(
@@ -569,12 +394,12 @@ int main(void)
                 (void*)0            // array buffer offset
         );
 
-        // 2nd attribute buffer : colors
+        // 2nd attribute buffer : UVs
         glEnableVertexAttribArray(1);
-        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[0]);
         glVertexAttribPointer(
                 1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-                3,                                // size
+                2,                                // size : U+V => 2
                 GL_FLOAT,                         // type
                 GL_FALSE,                         // normalized?
                 0,                                // stride
@@ -593,7 +418,7 @@ int main(void)
 
             MVP = Projection * View * Model;
             glUniformMatrix4fv(enemyMatrixID, 1, GL_FALSE, &MVP[0][0]);
-            glDrawArrays(GL_TRIANGLES, 0, 24 * 3);
+            glDrawArrays(GL_TRIANGLES, 0, rock_vertices.size());
         }
         glDisableVertexAttribArray(0);
         glDisableVertexAttribArray(1);
@@ -601,11 +426,11 @@ int main(void)
         // Use our shader
         glUseProgram(ballProgramID);
 
-        // Bind our texture in Texture Unit 0
+        //// Bind our texture in Texture Unit 0
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, Texture);
-        // Set our "myTextureSampler" sampler to use Texture Unit 0
-        glUniform1i(TextureID, 0);
+        glBindTexture(GL_TEXTURE_2D, FireballTexture);
+        //// Set our "myTextureSampler" sampler to use Texture Unit 0
+        glUniform1i(BallTextureID, 0);
 
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[1]);
@@ -620,7 +445,7 @@ int main(void)
 
         // 2nd attribute buffer : UVs
         glEnableVertexAttribArray(1);
-        glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[1]);
         glVertexAttribPointer(
                 1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
                 2,                                // size : U+V => 2
@@ -636,7 +461,7 @@ int main(void)
                 Model = glm::translate(glm::mat4(), ball_it->position_);
                 MVP = Projection * View * Model;
                 glUniformMatrix4fv(ballMatrixID, 1, GL_FALSE, &MVP[0][0]);
-                glDrawArrays(GL_TRIANGLES, 0, PHI_STEPS * PSI_STEPS * 3 * 3 * 2);
+                glDrawArrays(GL_TRIANGLES, 0, ball_vertices.size());
                 ++ball_it;
             }
         }
@@ -651,11 +476,13 @@ int main(void)
 
     // Cleanup VBO and shader
     glDeleteBuffers(2, vertexBuffers);
-    glDeleteBuffers(1, &colorBuffer);
+    //glDeleteBuffers(1, &colorBuffer);
+    glDeleteBuffers(2, uvBuffers);
     glDeleteProgram(enemyProgramID);
     glDeleteProgram(ballProgramID);
     glDeleteVertexArrays(1, &VertexArrayID);
-    glDeleteTextures(1, &Texture);
+    glDeleteTextures(1, &FireballTexture);
+    glDeleteTextures(1, &RockTexture);
 
     // Close OpenGL window and terminate GLFW
     glfwTerminate();
