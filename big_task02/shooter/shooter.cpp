@@ -24,6 +24,7 @@ using namespace glm;
 #include <common/shader.hpp>
 #include <common/texture.hpp>
 #include <common/objloader.hpp>
+#include <common/vboindexer.hpp>
 
 std::vector<GLfloat> sphereToCartesian(GLfloat phi, GLfloat psi, GLfloat radius) {
     phi = phi * glm::pi<GLfloat>() / 180;
@@ -72,79 +73,81 @@ float Camera::speed = 3.0f; // 3 units / second
 float Camera::mouseSpeed = 0.005f;
 glm::vec3 Camera::direction = glm::vec3(-0.6f, -0.6f, -0.6f);
 
+const size_t MAX_NUM_LIGHTS = 5;
+
 void Camera::computeMatricesFromInputs() {
 
-  // glfwGetTime is called only once, the first time this function is called
-  static double lastTime = glfwGetTime();
+    // glfwGetTime is called only once, the first time this function is called
+    static double lastTime = glfwGetTime();
 
-  // Compute time difference between current and last frame
-  double currentTime = glfwGetTime();
-  auto deltaTime = float(currentTime - lastTime);
+    // Compute time difference between current and last frame
+    double currentTime = glfwGetTime();
+    auto deltaTime = float(currentTime - lastTime);
 
-  static bool is_first_call = true;
-  if (is_first_call) {
-    is_first_call = false;
+    static bool is_first_call = true;
+    if (is_first_call) {
+        is_first_call = false;
+        glfwSetCursorPos(window, 1024.f / 2, 768.f / 2);
+    }
+
+    // Get mouse position
+    double xPos, yPos;
+    glfwGetCursorPos(window, &xPos, &yPos);
+
+    // Reset mouse position for next frame
     glfwSetCursorPos(window, 1024.f / 2, 768.f / 2);
-  }
 
-  // Get mouse position
-  double xPos, yPos;
-  glfwGetCursorPos(window, &xPos, &yPos);
+    // Compute new orientation
+    horizontalAngle += mouseSpeed * float(1024.f / 2 - xPos);
+    verticalAngle += mouseSpeed * float(768.f / 2 - yPos);
 
-  // Reset mouse position for next frame
-  glfwSetCursorPos(window, 1024.f / 2, 768.f / 2);
+    // Direction : Spherical coordinates to Cartesian coordinates conversion
+    direction = glm::vec3(
+            cos(verticalAngle) * sin(horizontalAngle),
+            sin(verticalAngle),
+            cos(verticalAngle) * cos(horizontalAngle)
+    );
 
-  // Compute new orientation
-  horizontalAngle += mouseSpeed * float(1024.f / 2 - xPos);
-  verticalAngle += mouseSpeed * float(768.f / 2 - yPos);
+    // Right vector
+    glm::vec3 right = glm::vec3(
+            sin(horizontalAngle - 3.14f / 2.0f),
+            0,
+            cos(horizontalAngle - 3.14f / 2.0f)
+    );
 
-  // Direction : Spherical coordinates to Cartesian coordinates conversion
-  direction = glm::vec3(
-      cos(verticalAngle) * sin(horizontalAngle),
-      sin(verticalAngle),
-      cos(verticalAngle) * cos(horizontalAngle)
-  );
+    // Up vector
+    glm::vec3 up = glm::cross(right, direction);
 
-  // Right vector
-  glm::vec3 right = glm::vec3(
-      sin(horizontalAngle - 3.14f / 2.0f),
-      0,
-      cos(horizontalAngle - 3.14f / 2.0f)
-  );
+    // Move forward
+    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+        position += direction * deltaTime * speed;
+    }
+    // Move backward
+    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+        position -= direction * deltaTime * speed;
+    }
+    // Strafe right
+    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+        position += right * deltaTime * speed;
+    }
+    // Strafe left
+    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+        position -= right * deltaTime * speed;
+    }
 
-  // Up vector
-  glm::vec3 up = glm::cross(right, direction);
+    float FoV = initialFoV;// - 5 * glfwGetMouseWheel(); // Now GLFW 3 requires setting up a callback for this. It's a bit too complicated for this beginner's tutorial, so it's disabled instead.
+    //  ModelMatrix = glm::translate(glm::mat4(), );
+    // Projection matrix : 45� Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
+    ProjectionMatrix = glm::perspective(glm::radians(FoV), 4.0f / 3.0f, 0.1f, 100.0f);
+    // Camera matrix
+    ViewMatrix = glm::lookAt(
+            position,           // Camera is here
+            position + direction, // and looks here : at the same position, plus "direction"
+            up                  // Head is up (set to 0,-1,0 to look upside-down)
+    );
 
-  // Move forward
-  if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    position += direction * deltaTime * speed;
-  }
-  // Move backward
-  if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    position -= direction * deltaTime * speed;
-  }
-  // Strafe right
-  if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-    position += right * deltaTime * speed;
-  }
-  // Strafe left
-  if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-    position -= right * deltaTime * speed;
-  }
-
-  float FoV = initialFoV;// - 5 * glfwGetMouseWheel(); // Now GLFW 3 requires setting up a callback for this. It's a bit too complicated for this beginner's tutorial, so it's disabled instead.
-  //  ModelMatrix = glm::translate(glm::mat4(), );
-  // Projection matrix : 45� Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-  ProjectionMatrix = glm::perspective(glm::radians(FoV), 4.0f / 3.0f, 0.1f, 100.0f);
-  // Camera matrix
-  ViewMatrix = glm::lookAt(
-      position,           // Camera is here
-      position + direction, // and looks here : at the same position, plus "direction"
-      up                  // Head is up (set to 0,-1,0 to look upside-down)
-  );
-
-  // For the next frame, the "last time" will be "now"
-  lastTime = currentTime;
+    // For the next frame, the "last time" will be "now"
+    lastTime = currentTime;
 }
 
 struct Enemy {
@@ -154,21 +157,21 @@ struct Enemy {
     GLfloat angle;
     glm::vec3 rotationAxis;
     Enemy() {
-      position = {
-          ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
-          ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
-          ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
-      };
-      angle = ((GLfloat)(std::rand() % 360)) / 360 * glm::pi<GLfloat>();
-      GLfloat x = ((GLfloat)(std::rand() % 1000)) / 100.0f;
-      GLfloat y = (std::rand() % 1000) / 100.0f;
-      GLfloat z = (std::rand() % 1000) / 100.0f;
-      rotationAxis = {
-              x,
-              y,
-              z
-      };
-      glm::normalize(rotationAxis);
+        position = {
+                ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
+                ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
+                ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
+        };
+        angle = ((GLfloat)(std::rand() % 360)) / 360 * glm::pi<GLfloat>();
+        GLfloat x = ((GLfloat)(std::rand() % 1000)) / 100.0f;
+        GLfloat y = (std::rand() % 1000) / 100.0f;
+        GLfloat z = (std::rand() % 1000) / 100.0f;
+        rotationAxis = {
+                x,
+                y,
+                z
+        };
+        glm::normalize(rotationAxis);
     }
 };
 
@@ -212,14 +215,14 @@ void createBallByKeySpaceAndTime(std::vector<Ball>& balls) {
 }
 
 void createControlledBallByKeyEnterAndTime(std::vector<Ball>& balls) {
-  if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
-    static GLfloat lastTime = glfwGetTime() - Ball::CREATION_TIME;
-    GLfloat currentTime = glfwGetTime();
-    if (currentTime - lastTime >= Ball::CREATION_TIME) {
-      lastTime = currentTime;
-      balls.emplace_back(true);
+    if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
+        static GLfloat lastTime = glfwGetTime() - Ball::CREATION_TIME;
+        GLfloat currentTime = glfwGetTime();
+        if (currentTime - lastTime >= Ball::CREATION_TIME) {
+            lastTime = currentTime;
+            balls.emplace_back(true);
+        }
     }
-  }
 }
 
 bool deleteCollidedObjects(std::vector<Ball>::iterator& ball_it,
@@ -238,6 +241,18 @@ bool deleteCollidedObjects(std::vector<Ball>::iterator& ball_it,
         }
     }
     return false;
+}
+
+void deleteExtraBalls(std::vector<Ball>& balls) {
+    while (balls.size() > MAX_NUM_LIGHTS) {
+        balls.erase(balls.begin());
+    }
+}
+
+void getLights(vec3* lights, std::vector<Ball>& balls) {
+    for (int i = 0; i < balls.size(); ++i) {
+        lights[i] = balls[i].position_;
+    }
 }
 
 int main(void)
@@ -294,26 +309,32 @@ int main(void)
     glBindVertexArray(VertexArrayID);
 
     // Create and compile our GLSL program from the shaders
-    GLuint enemyProgramID = LoadShaders("TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader");
+    GLuint programID = LoadShaders("TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader");
 
-    GLuint ballProgramID = LoadShaders("TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader");
     // Get a handle for our "MVP" uniform
-    GLuint enemyMatrixID = glGetUniformLocation(enemyProgramID, "MVP");
-    GLuint ballMatrixID = glGetUniformLocation(ballProgramID, "MVP");
+    GLuint MatrixID = glGetUniformLocation(programID, "MVP");
+    GLuint ViewMatrixID = glGetUniformLocation(programID, "V");
+    GLuint ModelMatrixID = glGetUniformLocation(programID, "M");
+    GLuint NumLightsID = glGetUniformLocation(programID, "num_lights");
+    GLuint LightPowerID = glGetUniformLocation(programID, "LightPower");
 
     // Load textures
-    GLuint FireballTexture = loadDDS("fireball_texture.DDS");
+    GLuint fireballTexture = loadDDS("fireball_texture.DDS");
     GLuint enemyTexture = loadDDS("rock_texture.DDS");
 
     // Get a handle for our "myTextureSampler" uniform
-    GLuint EnemyTextureID = glGetUniformLocation(enemyProgramID, "myTextureSampler");
-    GLuint BallTextureID = glGetUniformLocation(ballProgramID, "myTextureSampler");
+    GLuint EnemyTextureID = glGetUniformLocation(programID, "myTextureSampler");
+    GLuint BallTextureID = glGetUniformLocation(programID, "myTextureSampler");
 
     // Read sphere .obj file
     std::vector<glm::vec3> ball_vertices;
     std::vector<glm::vec2> ball_uvs;
     std::vector<glm::vec3> ball_normals;
     assert(loadOBJ("fireball_model.obj", ball_vertices, ball_uvs, ball_normals));
+
+    for (int i = 0; i < ball_normals.size(); ++i) {
+        ball_normals[i] *= -1;
+    }
 
     // Read rock .obj file
     std::vector<glm::vec3> enemy_vertices;
@@ -348,8 +369,20 @@ int main(void)
     glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[1]);
     glBufferData(GL_ARRAY_BUFFER, ball_uvs.size() * sizeof(glm::vec2), &ball_uvs[0], GL_STATIC_DRAW);
 
+    GLuint normalBuffers[2];
+    glGenBuffers(2, normalBuffers);
+    glBindBuffer(GL_ARRAY_BUFFER, normalBuffers[0]);
+    glBufferData(GL_ARRAY_BUFFER, enemy_normals.size() * sizeof(glm::vec3), &enemy_normals[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, normalBuffers[1]);
+    glBufferData(GL_ARRAY_BUFFER, ball_normals.size() * sizeof(glm::vec3), &ball_normals[0], GL_STATIC_DRAW);
+
     std::vector<Enemy> enemies;
     std::vector<Ball> balls;
+
+    // Use our shader
+    glUseProgram(programID);
+    GLuint LightID = glGetUniformLocation(programID, "LightPositions_worldspace");
+    vec3 lights[MAX_NUM_LIGHTS];
 
     do {
         createEnemyByTime(enemies);
@@ -358,8 +391,12 @@ int main(void)
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Use our shader
-        glUseProgram(enemyProgramID);
+        deleteExtraBalls(balls);
+        getLights(lights, balls);
+
+        glUniform1i(NumLightsID, balls.size());
+        glUniform3fv(LightID, MAX_NUM_LIGHTS, &lights[0][0]);
+        glUniform1f(LightPowerID, 50.0f);
 
         // Bind our texture in Texture Unit 0
         glActiveTexture(GL_TEXTURE0);
@@ -390,6 +427,18 @@ int main(void)
                 (void*)0                          // array buffer offset
         );
 
+        // 3rd attribute buffer : Normals
+        glEnableVertexAttribArray(2);
+        glBindBuffer(GL_ARRAY_BUFFER, normalBuffers[0]);
+        glVertexAttribPointer(
+                2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                3,                                // size : 3
+                GL_FLOAT,                         // type
+                GL_FALSE,                         // normalized?
+                0,                                // stride
+                (void*)0                          // array buffer offset
+        );
+
         Camera::computeMatricesFromInputs();
         Projection = Camera::ProjectionMatrix;
         View = Camera::ViewMatrix;
@@ -401,20 +450,24 @@ int main(void)
             // in the "MVP" uniform
 
             MVP = Projection * View * Model;
-            glUniformMatrix4fv(enemyMatrixID, 1, GL_FALSE, &MVP[0][0]);
+
+            glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+            glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &Model[0][0]);
+            glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &View[0][0]);
+
             glDrawArrays(GL_TRIANGLES, 0, enemy_vertices.size());
         }
         glDisableVertexAttribArray(0);
         glDisableVertexAttribArray(1);
-
-        // Use our shader
-        glUseProgram(ballProgramID);
+        glDisableVertexAttribArray(2);
 
         //// Bind our texture in Texture Unit 0
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, FireballTexture);
+        glBindTexture(GL_TEXTURE_2D, fireballTexture);
         //// Set our "myTextureSampler" sampler to use Texture Unit 0
         glUniform1i(BallTextureID, 0);
+
+        glUniform1f(LightPowerID, 1.0f);
 
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[1]);
@@ -439,22 +492,40 @@ int main(void)
                 (void*)0                          // array buffer offset
         );
 
+        // 3rd attribute buffer : Normals
+        glEnableVertexAttribArray(2);
+        glBindBuffer(GL_ARRAY_BUFFER, normalBuffers[1]);
+        glVertexAttribPointer(
+                2,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+                3,                                // size : 3
+                GL_FLOAT,                         // type
+                GL_FALSE,                         // normalized?
+                0,                                // stride
+                (void*)0                          // array buffer offset
+        );
+
         for (auto ball_it = balls.begin(); ball_it != balls.end();) {
-          if (ball_it->is_controlled_) {
-            ball_it->position_ += Camera::direction * Ball::speed;
-          } else {
-            ball_it->position_ += ball_it->direction_ * Ball::speed;
-          }
-          if (!deleteCollidedObjects(ball_it, balls, enemies)) {
-              Model = glm::translate(glm::mat4(), ball_it->position_);
-              MVP = Projection * View * Model;
-              glUniformMatrix4fv(ballMatrixID, 1, GL_FALSE, &MVP[0][0]);
-              glDrawArrays(GL_TRIANGLES, 0, ball_vertices.size());
-              ++ball_it;
-          }
+            if (ball_it->is_controlled_) {
+                ball_it->position_ += Camera::direction * Ball::speed;
+            }
+            else {
+                ball_it->position_ += ball_it->direction_ * Ball::speed;
+            }
+            if (!deleteCollidedObjects(ball_it, balls, enemies)) {
+                Model = glm::translate(glm::mat4(), ball_it->position_);
+                MVP = Projection * View * Model;
+
+                glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+                glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &Model[0][0]);
+                glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &View[0][0]);
+
+                glDrawArrays(GL_TRIANGLES, 0, ball_vertices.size());
+                ++ball_it;
+            }
         }
         glDisableVertexAttribArray(0);
         glDisableVertexAttribArray(1);
+        glDisableVertexAttribArray(2);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -464,12 +535,10 @@ int main(void)
 
     // Cleanup VBO and shader
     glDeleteBuffers(2, vertexBuffers);
-    //glDeleteBuffers(1, &colorBuffer);
     glDeleteBuffers(2, uvBuffers);
-    glDeleteProgram(enemyProgramID);
-    glDeleteProgram(ballProgramID);
+    glDeleteProgram(programID);
     glDeleteVertexArrays(1, &VertexArrayID);
-    glDeleteTextures(1, &FireballTexture);
+    glDeleteTextures(1, &fireballTexture);
     glDeleteTextures(1, &enemyTexture);
 
     // Close OpenGL window and terminate GLFW
