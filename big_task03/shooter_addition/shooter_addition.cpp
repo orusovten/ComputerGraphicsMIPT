@@ -43,6 +43,7 @@ void insertIntoVertices(GLfloat* array, int& from_index, std::vector<GLfloat>& b
 
 
 struct Camera {
+  static const GLfloat CHANGE_SCENE_SPEED_TIME;
   static glm::mat4 ViewMatrix;
   static glm::mat4 ProjectionMatrix;
   // Initial position : on +Z
@@ -62,6 +63,7 @@ struct Camera {
   static void computeMatricesFromInputs();
 };
 
+const GLfloat Camera::CHANGE_SCENE_SPEED_TIME = 0.5f;
 glm::mat4 Camera::ViewMatrix = glm::mat4();
 glm::mat4 Camera::ProjectionMatrix = glm::mat4();
 glm::vec3 Camera::position = glm::vec3(-11, -11, -11);
@@ -149,7 +151,7 @@ void Camera::computeMatricesFromInputs() {
 
 struct Enemy {
   static const GLfloat colliderRadius;
-  static const GLfloat CREATION_TIME;
+  static GLfloat CREATION_TIME;
   glm::vec3 position;
   GLfloat angle;
   glm::vec3 rotationAxis;
@@ -173,7 +175,7 @@ struct Enemy {
 };
 
 const GLfloat Enemy::colliderRadius = 1.0f;
-const GLfloat Enemy::CREATION_TIME = 2.5f;
+GLfloat Enemy::CREATION_TIME = 1.5f;
 
 void createEnemyByTime(std::vector<Enemy>& enemies) {
   static GLfloat lastTime = glfwGetTime();
@@ -188,7 +190,7 @@ struct Ball {
   static const GLfloat colliderRadius;
   static const GLfloat CREATION_TIME;
   static const GLfloat CHANGE_DETALIZATION_TIME;
-  static const GLfloat speed;
+  static GLfloat speed;
   glm::vec3 position_;
   glm::vec3 direction_;
   bool is_controlled_;
@@ -200,7 +202,7 @@ struct Ball {
 const GLfloat Ball::CHANGE_DETALIZATION_TIME = 0.1f;
 const GLfloat Ball::colliderRadius = 0.5f;
 const GLfloat Ball::CREATION_TIME = 1.0f;
-const GLfloat Ball::speed = 0.01f;
+GLfloat Ball::speed = 0.01f;
 
 void createBallByKeySpaceAndTime(std::vector<Ball>& balls) {
   if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
@@ -293,6 +295,24 @@ void changeBallDetalizationLevel(GLuint* vertexBuffers, int& PHI_STEPS, int& PSI
   }
 }
 
+void changeSceneSpeedByKeys_W_S() {
+  static GLfloat speed_coef = 1.f;
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+    speed_coef = 1.6f;
+  } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    speed_coef = 0.625f;
+  } else {
+    return;
+  }
+  static GLfloat lastTime = glfwGetTime() - Camera::CHANGE_SCENE_SPEED_TIME;
+  GLfloat currentTime = glfwGetTime();
+  if (currentTime - lastTime >= Camera::CHANGE_SCENE_SPEED_TIME) {
+    Ball::speed *= speed_coef;
+    Enemy::CREATION_TIME /= speed_coef;
+    std::cout << Ball::speed << std::endl;
+    lastTime = currentTime;
+  }
+}
 
 int main(void)
 {
@@ -435,6 +455,7 @@ int main(void)
     createBallByKeySpaceAndTime(balls);
     createControlledBallByKeyEnterAndTime(balls);
     changeBallDetalizationLevel(vertexBuffers, PHI_STEPS, PSI_STEPS);
+    changeSceneSpeedByKeys_W_S();
     // Clear the screen_
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
