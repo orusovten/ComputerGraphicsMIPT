@@ -41,6 +41,8 @@ void insertIntoVertices(GLfloat* array, int& from_index, std::vector<GLfloat>& b
   array[from_index++] = ballVertices[2];
 }
 
+// Our field is cube with side length=2*FIELD_BOUNDARY and center in (0, 0, 0)
+const int FIELD_BOUNDARY = 11.f;
 
 struct Camera {
   static const GLfloat CHANGE_SCENE_SPEED_TIME;
@@ -66,7 +68,7 @@ struct Camera {
 const GLfloat Camera::CHANGE_SCENE_SPEED_TIME = 0.5f;
 glm::mat4 Camera::ViewMatrix = glm::mat4();
 glm::mat4 Camera::ProjectionMatrix = glm::mat4();
-glm::vec3 Camera::position = glm::vec3(-11, -11, -11);
+glm::vec3 Camera::position = glm::vec3(-(FIELD_BOUNDARY - 0.5f));
 float Camera::horizontalAngle = glm::asin(0.625f);
 float Camera::verticalAngle = glm::asin(0.6f);
 float Camera::initialFoV = 45.0f;
@@ -119,11 +121,13 @@ void Camera::computeMatricesFromInputs() {
 
   // Move forward
   if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-    position += direction * deltaTime * speed;
+    position += direction * glm::vec3(1, 0, 1) * deltaTime * speed;
+//    position += direction * deltaTime * speed;
   }
   // Move backward
   if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-    position -= direction * deltaTime * speed;
+    position -= direction * glm::vec3(1, 0, 1) * deltaTime * speed;
+//    position -= direction * deltaTime * speed;
   }
   // Strafe right
   if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
@@ -133,6 +137,9 @@ void Camera::computeMatricesFromInputs() {
   if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
     position -= right * deltaTime * speed;
   }
+  position = glm::max(position, glm::vec3(-(FIELD_BOUNDARY - 0.5f)));
+  position = glm::min(position, glm::vec3((FIELD_BOUNDARY - 0.5f)));
+
 
   float FoV = initialFoV;// - 5 * glfwGetMouseWheel(); // Now GLFW 3 requires setting up a callback for this. It's a bit too complicated for this beginner's tutorial, so it's disabled instead.
   //  ModelMatrix = glm::translate(glm::mat4(), );
@@ -144,9 +151,9 @@ void Camera::computeMatricesFromInputs() {
       position + direction, // and looks here : at the same position, plus "direction"
       up                  // Head is up (set to 0,-1,0 to look upside-down)
   );
-
   // For the next frame, the "last time" will be "now"
   lastTime = currentTime;
+
 }
 
 struct Enemy {
@@ -156,10 +163,11 @@ struct Enemy {
   GLfloat angle;
   glm::vec3 rotationAxis;
   Enemy() {
+    const int enemy_bound = FIELD_BOUNDARY - 1.f;
     position = {
-        ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
-        ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
-        ((GLfloat)(std::rand() % 1000)) / 50.0f - 10.f,
+        ((GLfloat)(std::rand() % (100 * enemy_bound)) / (5 * enemy_bound)) - enemy_bound,
+        ((GLfloat)(std::rand() % (100 * enemy_bound)) / (5 * enemy_bound))  - enemy_bound,
+        ((GLfloat)(std::rand() % (100 * enemy_bound)) / (5 * enemy_bound))  - enemy_bound,
     };
     angle = ((GLfloat)(std::rand() % 360)) / 360 * glm::pi<GLfloat>();
     GLfloat x = ((GLfloat)(std::rand() % 1000)) / 100.0f;
@@ -202,7 +210,7 @@ struct Ball {
 const GLfloat Ball::CHANGE_DETALIZATION_TIME = 0.1f;
 const GLfloat Ball::colliderRadius = 0.5f;
 const GLfloat Ball::CREATION_TIME = 1.0f;
-GLfloat Ball::speed = 0.01f;
+GLfloat Ball::speed = 0.02f;
 
 void createBallByKeySpaceAndTime(std::vector<Ball>& balls) {
   if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
@@ -229,6 +237,10 @@ void createControlledBallByKeyEnterAndTime(std::vector<Ball>& balls) {
 bool deleteCollidedObjects(std::vector<Ball>::iterator& ball_it,
                            std::vector<Ball>& balls,
                            std::vector<Enemy>& enemies) {
+  if (ball_it->position_[1] - (-FIELD_BOUNDARY) <= Ball::colliderRadius) {
+    ball_it = balls.erase(ball_it);
+    return true;
+  }
   for (auto enemy_it = enemies.begin(); enemy_it != enemies.end(); ++enemy_it) {
     auto dist_coords = ball_it->position_ - enemy_it->position;
     GLfloat dist = 0.f;
@@ -309,7 +321,6 @@ void changeSceneSpeedByKeys_W_S() {
   if (currentTime - lastTime >= Camera::CHANGE_SCENE_SPEED_TIME) {
     Ball::speed *= speed_coef;
     Enemy::CREATION_TIME /= speed_coef;
-    std::cout << Ball::speed << std::endl;
     lastTime = currentTime;
   }
 }
@@ -365,17 +376,17 @@ int main(void)
   glBindVertexArray(VertexArrayID);
 
   // Create and compile our GLSL program from the shaders
-  GLuint enemyProgramID = LoadShaders("TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader");
+  GLuint ProgramID = LoadShaders("TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader");
 
-  GLuint ballProgramID = LoadShaders("TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader");
-  // Get a handle for our "MVP" uniform
-  GLuint enemyMatrixID = glGetUniformLocation(enemyProgramID, "MVP");
-  GLuint ballMatrixID = glGetUniformLocation(ballProgramID, "MVP");
+   // Get a handle for our "MVP" uniform
+  GLuint enemyMatrixID = glGetUniformLocation(ProgramID, "MVP");
+  GLuint ballMatrixID = glGetUniformLocation(ProgramID, "MVP");
+  GLuint planeMatrixID = glGetUniformLocation(ProgramID, "MVP");
 
   GLuint enemyTexture = loadDDS("rock_texture.DDS");
 
   // Get a handle for our "myTextureSampler" uniform
-  GLuint EnemyTextureID = glGetUniformLocation(enemyProgramID, "myTextureSampler");
+  GLuint EnemyTextureID = glGetUniformLocation(ProgramID, "myTextureSampler");
   // Read rock .obj file
   std::vector<glm::vec3> enemy_vertices;
   std::vector<glm::vec2> enemy_uvs;
@@ -404,7 +415,7 @@ int main(void)
 
   GLuint ballTexture = loadDDS("fireball.DDS");
   // Get a handle for our "myTextureSampler" uniform
-  GLuint ballTextureID = glGetUniformLocation(ballProgramID, "myTextureSampler");
+  GLuint ballTextureID = glGetUniformLocation(ProgramID, "myTextureSampler");
 
   // Generate UV-coordinates for ball
   GLfloat ball_uv_buffer_data[PHI_STEPS * PSI_STEPS * 3 * 2 * 2];
@@ -429,26 +440,42 @@ int main(void)
     ball_uv_buffer_data[i * 3 * 2 * 2 + 11] = 1.0f;
   }
 
-  GLuint uvBuffer;
-  glGenBuffers(1, &uvBuffer);
+  GLuint planeTexture = loadDDS("grass.DDS");
+  // Get a handle for our "myTextureSampler" uniform
+  GLuint planeTextureID = glGetUniformLocation(ProgramID, "myTextureSampler");
+
+  std::vector<glm::vec3> plane_vertices;
+  std::vector<glm::vec2> plane_uvs;
+  std::vector<glm::vec3> plane_normals;
+  assert(loadOBJ("plane_model.obj", plane_vertices, plane_uvs, plane_normals));
 
 
-  GLuint vertexBuffers[2];
-  glGenBuffers(2, vertexBuffers);
+  GLuint vertexBuffers[3];
+  glGenBuffers(3, vertexBuffers);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[0]);
   glBufferData(GL_ARRAY_BUFFER, enemy_vertices.size() * sizeof(glm::vec3), &enemy_vertices[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[1]);
   glBufferData(GL_ARRAY_BUFFER, sizeof(ballVertexData), ballVertexData, GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[2]);
+  glBufferData(GL_ARRAY_BUFFER, plane_vertices.size() * sizeof(glm::vec3), &plane_vertices[0], GL_STATIC_DRAW);
 
-  GLuint uvBuffers[2];
-  glGenBuffers(2, uvBuffers);
+  GLuint uvBuffers[3];
+  glGenBuffers(3, uvBuffers);
   glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[0]);
   glBufferData(GL_ARRAY_BUFFER, enemy_uvs.size() * sizeof(glm::vec2), &enemy_uvs[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[1]);
   glBufferData(GL_ARRAY_BUFFER, sizeof(ball_uv_buffer_data), ball_uv_buffer_data, GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[2]);
+  glBufferData(GL_ARRAY_BUFFER, plane_uvs.size() * sizeof(glm::vec2), &plane_uvs[0], GL_STATIC_DRAW);
 
   std::vector<Enemy> enemies;
   std::vector<Ball> balls;
+  std::vector<glm::vec3> plane_positions;
+  for (int i = -FIELD_BOUNDARY; i <= FIELD_BOUNDARY; ++i) {
+    for (int j = -FIELD_BOUNDARY; j <= FIELD_BOUNDARY; ++j) {
+      plane_positions.emplace_back(i, -FIELD_BOUNDARY, j);
+    }
+  }
 
   do {
     createEnemyByTime(enemies);
@@ -460,7 +487,7 @@ int main(void)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Use our shader
-    glUseProgram(enemyProgramID);
+    glUseProgram(ProgramID);
 
     // Bind our texture in Texture Unit 0
     glActiveTexture(GL_TEXTURE0);
@@ -508,9 +535,6 @@ int main(void)
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
 
-    // Use our shader
-    glUseProgram(ballProgramID);
-
     //// Bind our texture in Texture Unit 0
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ballTexture);
@@ -557,6 +581,44 @@ int main(void)
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
 
+    //// Bind our texture in Texture Unit 0
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, planeTexture);
+    //// Set our "myTextureSampler" sampler to use Texture Unit 0
+    glUniform1i(planeTextureID, 0);
+
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[2]);
+    glVertexAttribPointer(
+        0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
+        3,                  // size
+        GL_FLOAT,           // type
+        GL_FALSE,           // normalized?
+        0,                  // stride
+        (void*)0            // array buffer offset
+    );
+
+    // 2nd attribute buffer : UVs
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[2]);
+    glVertexAttribPointer(
+        1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+        2,                                // size : U+V => 2
+        GL_FLOAT,                         // type
+        GL_FALSE,                         // normalized?
+        0,                                // stride
+        (void*)0                          // array buffer offset
+    );
+
+    for (const auto& plane_position : plane_positions) {
+      Model = glm::translate(glm::mat4(), plane_position);
+      MVP = Projection * View * Model;
+      glUniformMatrix4fv(planeMatrixID, 1, GL_FALSE, &MVP[0][0]);
+      glDrawArrays(GL_TRIANGLES, 0, plane_vertices.size());
+    }
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+
     glfwSwapBuffers(window);
     glfwPollEvents();
   } // Check if the ESC key was pressed or the window was closed
@@ -564,13 +626,14 @@ int main(void)
          glfwWindowShouldClose(window) == 0);
 
   // Cleanup VBO and shader
-  glDeleteBuffers(2, vertexBuffers);
+  glDeleteBuffers(3, vertexBuffers);
   //glDeleteBuffers(1, &colorBuffer);
-  glDeleteBuffers(2, uvBuffers);
-  glDeleteProgram(enemyProgramID);
-  glDeleteProgram(ballProgramID);
+  glDeleteBuffers(3, uvBuffers);
+  glDeleteProgram(ProgramID);
   glDeleteVertexArrays(1, &VertexArrayID);
   glDeleteTextures(1, &enemyTexture);
+  glDeleteTextures(1, &ballTexture);
+  glDeleteTextures(1, &planeTexture);
 
   // Close OpenGL window and terminate GLFW
   glfwTerminate();
