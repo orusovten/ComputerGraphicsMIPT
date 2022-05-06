@@ -15,7 +15,7 @@ out vec3 EyeDirection_cameraspace;
 out vec3 LightDirections_cameraspace[MAX_NUM_LIGHTS];
 
 // Values that stay constant for the whole mesh.
-uniform mat4 MVP;
+uniform mat4 P;
 uniform mat4 V;
 uniform mat4 M;
 uniform int num_lights;
@@ -24,7 +24,7 @@ uniform vec3 LightPositions_worldspace[MAX_NUM_LIGHTS];
 
 void main() {
     // Output position of the vertex, in clip space : MVP * position
-    gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
+    gl_Position =  P * V * M * vec4(vertexPosition_modelspace,1);
 
     // Position of the vertex, in worldspace : M * position
 	Position_worldspace = (M * vec4(vertexPosition_modelspace,1)).xyz;
