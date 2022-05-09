@@ -38,7 +38,7 @@ std::vector<GLfloat> sphereToCartesian(GLfloat phi, GLfloat psi, GLfloat radius)
   return { x, y, z };
 }
 
-void insertIntoVertices(GLfloat* array, int& from_index, std::vector<GLfloat>& ballVertices) {
+void insertIntoVertices(std::vector<GLfloat>& array, int& from_index, std::vector<GLfloat>& ballVertices) {
   array[from_index++] = ballVertices[0];
   array[from_index++] = ballVertices[1];
   array[from_index++] = ballVertices[2];
@@ -260,7 +260,7 @@ bool deleteCollidedObjects(std::vector<Ball>::iterator& ball_it,
 }
 
 
-void generateSphere(GLfloat* array, GLfloat radius, int phi_steps, int psi_steps) {
+void generateSphere(std::vector<GLfloat>& array, GLfloat radius, int phi_steps, int psi_steps) {
   GLfloat phi_step = 360.f / phi_steps;
   GLfloat psi_step = 180.f / psi_steps;
 
@@ -303,10 +303,10 @@ void changeBallDetalizationLevel(GLuint* vertexBuffers, int& PHI_STEPS, int& PSI
     PSI_STEPS += add;
     lastTime = currentTime;
     const GLfloat RADIUS = Ball::colliderRadius;
-    GLfloat ballVertexData[PHI_STEPS * PSI_STEPS * 3 * 3 * 2];
+    std::vector<GLfloat> ballVertexData(PHI_STEPS * PSI_STEPS * 3 * 3 * 2);
     generateSphere(ballVertexData, RADIUS, PHI_STEPS, PSI_STEPS);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(ballVertexData), ballVertexData, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, ballVertexData.size() * sizeof(GLfloat), &ballVertexData[0], GL_STATIC_DRAW);
   }
 }
 
@@ -414,7 +414,7 @@ int main(void)
   int PSI_STEPS = 20;
   const GLfloat RADIUS = Ball::colliderRadius;
 
-  GLfloat ballVertexData[PHI_STEPS * PSI_STEPS * 3 * 3 * 2];
+  std::vector<GLfloat> ballVertexData(PHI_STEPS * PSI_STEPS * 3 * 3 * 2);
   generateSphere(ballVertexData, RADIUS, PHI_STEPS, PSI_STEPS);
 
   GLuint ballTexture = loadDDS("fireball.DDS");
@@ -422,7 +422,7 @@ int main(void)
   GLuint ballTextureID = glGetUniformLocation(ProgramID, "myTextureSampler");
 
   // Generate UV-coordinates for ball
-  GLfloat ball_uv_buffer_data[PHI_STEPS * PSI_STEPS * 3 * 2 * 2];
+  std::vector<GLfloat> ball_uv_buffer_data(PHI_STEPS * PSI_STEPS * 3 * 2 * 2);
   for (int i = 0; i < PHI_STEPS * PSI_STEPS; ++i) {
     ball_uv_buffer_data[i * 3 * 2 * 2 + 0] = 0.0f;
     ball_uv_buffer_data[i * 3 * 2 * 2 + 1] = 0.0f;
@@ -444,7 +444,7 @@ int main(void)
     ball_uv_buffer_data[i * 3 * 2 * 2 + 11] = 1.0f;
   }
 
-  GLuint planeTexture = loadDDS("grass.DDS");
+  GLuint planeTexture = loadDDS("grass_texture.DDS");
   // Get a handle for our "myTextureSampler" uniform
   GLuint planeTextureID = glGetUniformLocation(ProgramID, "myTextureSampler");
 
@@ -468,7 +468,7 @@ int main(void)
   glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[0]);
   glBufferData(GL_ARRAY_BUFFER, enemy_vertices.size() * sizeof(glm::vec3), &enemy_vertices[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[1]);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(ballVertexData), ballVertexData, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, ballVertexData.size() * sizeof(GLfloat), &ballVertexData[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[2]);
   glBufferData(GL_ARRAY_BUFFER, plane_vertices.size() * sizeof(glm::vec3), &plane_vertices[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, vertexBuffers[3]);
@@ -479,7 +479,7 @@ int main(void)
   glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[0]);
   glBufferData(GL_ARRAY_BUFFER, enemy_uvs.size() * sizeof(glm::vec2), &enemy_uvs[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[1]);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(ball_uv_buffer_data), ball_uv_buffer_data, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, ball_uv_buffer_data.size() * sizeof(GLfloat), &ball_uv_buffer_data[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[2]);
   glBufferData(GL_ARRAY_BUFFER, plane_uvs.size() * sizeof(glm::vec2), &plane_uvs[0], GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, uvBuffers[3]);
